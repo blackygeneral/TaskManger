@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if docker compose version >/dev/null 2>&1; then exec docker compose "$@"; fi
+if command -v docker-compose >/dev/null 2>&1; then exec docker-compose "$@"; fi
+# Portable Linux fallback, pinned to the official release and checksum.
+if [[ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ]]; then
+  echo 'Install the Docker Compose v2 plugin for your platform.' >&2
+  exit 1
+fi
+compose_bin="${TMPDIR:-/tmp}/taskflow-docker-compose"
+expected_sha='dba9d98e1ba5bfe11d88c99b9bd32fc4a0624a30fafe68eea34d61a3e42fd372'
+if [[ ! -f "$compose_bin" ]] || [[ "$(sha256sum "$compose_bin" | cut -d ' ' -f 1)" != "$expected_sha" ]]; then
+  download=$(mktemp)
+  trap 'rm -f "$download"' EXIT
+  curl --fail --location --silent --show-error 'https://github.com/docker/compose/releases/download/v2.40.3/docker-compose-linux-x86_64' -o "$download"
+  [[ "$(sha256sum "$download" | cut -d ' ' -f 1)" == "$expected_sha" ]] || { echo 'Compose checksum mismatch' >&2; exit 1; }
+  install -m 755 "$download" "$compose_bin"
+fi
+exec "$compose_bin" "$@"
